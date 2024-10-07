@@ -6,8 +6,8 @@ use knyst::{
     graph::*,
     prelude::*,
 };
-use std::time::Duration;
 use std::sync::mpsc::channel;
+use std::time::Duration;
 
 #[derive(Parser)]
 #[clap(version, about)]
@@ -42,42 +42,47 @@ fn main() -> Result<()> {
 
     let mut k = knyst_commands();
 
-    let mut settings = k.default_graph_settings();
-    settings.sample_rate = backend.sample_rate() as f32;
-    settings.block_size = backend.block_size().unwrap_or(64);
-    settings.num_outputs = buffer_channels;
-    settings.num_inputs = 0;
-    let mut graph = Graph::new(settings);
+    // let mut settings = k.default_graph_settings();
+    // settings.sample_rate = backend.sample_rate() as f32;
+    // settings.block_size = backend.block_size().unwrap_or(64);
+    // settings.num_outputs = buffer_channels;
+    // settings.num_inputs = 0;
 
-    let buf_playback_node = BufferReaderMulti::new(buffer, 1.0, StopAction::FreeSelf)
-        .channels(buffer_channels)
-        .looping(false);
-    let playback_node_id = graph.push(buf_playback_node);
+    // k.init_local_graph(settings);
+    let playback_node_id = buffer_reader_multi(buffer, 1.0, false, StopAction::FreeSelf);
 
     if args.volume == 1.0 {
         println!("Outputting raw file");
-        for i in 0..buffer_channels {
-            graph.connect(playback_node_id.to_graph_out().from_index(i).to_index(i))?;
-        }
+        // Works
+        // graph_output(0, pan_mono_to_stereo().signal(playback_node_id).pan(0.5));
+        graph_output(0, playback_node_id);
+        // graph_output(0, playback_node_id.out(0));
+        // graph_output(1, playback_node_id.out(1));
     } else {
-        println!("Outputting through `Mult` with multiplier of {:?}", args.volume);
-        for i in 0..buffer_channels {
-            let amp = graph.push(Mult);
-            graph.connect(amp.to_graph_out().to_index(i))?;
-            graph.connect(playback_node_id.to(amp).from_index(i).to_index(0))?;
-            graph.connect(constant(args.volume).to(amp).to_index(1))?;
-        }
+        println!(
+            "Outputting through `Mult` with multiplier of {:?}",
+            args.volume
+        );
+        graph_output(0, playback_node_id * args.volume);
     }
 
-    let note_graph_id = k.push(graph, inputs!());
-    k.connect(note_graph_id.to_graph_out().channels(buffer_channels));
+    // let note_graph_id = k.upload_local_graph().unwrap();
+    // graph_output(0, note_graph_id);
+
+    let inspection = k.request_inspection();
 
     let total_duration = buffer.duration().to_seconds_f64() as u64;
     let pb = ProgressBar::new(total_duration);
-    pb.set_style(ProgressStyle::with_template("{elapsed_precise} / {duration_precise} [{wide_bar}]")?.progress_chars("█▉▊▋▌▍▎▏ "));
+    pb.set_style(
+        ProgressStyle::with_template("{elapsed_precise} / {duration_precise} [{wide_bar}]")?
+            .progress_chars("█▉▊▋▌▍▎▏ "),
+    );
     for _ in 0..total_duration {
         std::thread::sleep(Duration::from_secs(1));
         pb.inc(1);
+        if let Ok(inspection) = inspection.try_recv() {
+            dbg!(inspection);
+        }
     }
     std::thread::sleep(Duration::from_secs(1));
     pb.finish();

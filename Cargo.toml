@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-knyst = "0.5.0"
+knyst = { git = "https://github.com/ErikNatanael/knyst" }
 anyhow = "1.0.89"
 clap = { version = "4.5.19", features = ["derive"] }
 indicatif = "0.17.8"
